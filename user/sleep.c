@@ -6,7 +6,7 @@ int
 main(int argc, char *argv[])
 {
     if (argc < 2) {
-        fprintf(2, "Wrong Arg!\n");
+        write(2, "Expect Argu\n", 13);
         exit(1);
     }
     else {
