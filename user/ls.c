@@ -30,7 +30,7 @@ ls(char *path)
   struct dirent de;
   struct stat st;
 
-  if((fd = open(path, 0)) < 0){
+  if((fd = open(path, 0)) < 0){  // readonly
     fprintf(2, "ls: cannot open %s\n", path);
     return;
   }
