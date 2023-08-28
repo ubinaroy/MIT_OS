@@ -1,3 +1,3 @@
 # MIT_OS
-[x]util
-[]cow
+- [x] util
+- [ ] cow
