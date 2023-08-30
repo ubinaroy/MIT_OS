@@ -1,3 +1,4 @@
 # MIT_OS
 - [x] util
-- [ ] cow
+- [x] syscall
+- [ ] page table
