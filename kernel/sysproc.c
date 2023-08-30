@@ -95,3 +95,19 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// TRACE syscall implementation.
+// Terminal: trace [mask] [syscall] [syscall_val]...[..]
+// Input: 1 << SYS_MASK, and 2 << 31 - 1 for trace all of the sysc
+// Output: [pid]: syscall [sys_name] -> [return_val]
+uint64
+sys_trace(void)
+{
+  int n;
+  if (argint(0, &n) < 0){
+    return -1;
+  }
+  struct proc* p = myproc();
+  p->tracemask = n;
+  return 0;
+}

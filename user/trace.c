@@ -14,11 +14,12 @@ main(int argc, char *argv[])
     exit(1);
   }
 
-  if (trace(atoi(argv[1])) < 0) {
+  if (trace(atoi(argv[1])) < 0) {   // send the trace mask(1 << sys_mask) to a0
     fprintf(2, "%s: trace failed\n", argv[0]);
     exit(1);
   }
   
+  // This is for the trace'd' syscall:
   for(i = 2; i < argc && i < MAXARG; i++){
     nargv[i-2] = argv[i];
   }
