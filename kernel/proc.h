@@ -105,5 +105,5 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   // Add a new varible for TRACE syscall implementation.
-  int tracemask;
+  int tracemask;               // The Trace mask number, like 1 << sys_mask
 };

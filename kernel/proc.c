@@ -695,3 +695,18 @@ procdump(void)
     printf("\n");
   }
 }
+
+// Process number counts those used.
+uint64 procnum(void)
+{
+  struct proc *p;
+  uint64 counts = 0;
+
+  for (p = proc; p < &proc[NPROC]; p ++){ // 这里不用锁内存，只读不写
+    if (p -> state != UNUSED){
+      counts ++;
+    }
+  }
+
+  return counts;
+}
