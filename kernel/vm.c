@@ -432,3 +432,24 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+// vmprint
+const char* indents[3] = {" ..", " .. ..", " .. .. .."};
+void r_vmprint(pagetable_t pgtbl, int depth){
+  for (int i = 0; i < 512; i ++){
+    pte_t pte = pgtbl[i];
+    if (pte & PTE_V){
+      printf("%s%d: pte %p pa %p\n", indents[depth], i, pte, PTE2PA(pte));
+      if ((pte & (PTE_R | PTE_W | PTE_X)) == 0){
+        uint64 child_pgtbl = PTE2PA(pte);
+        r_vmprint((pagetable_t)child_pgtbl, depth + 1);
+      }
+    }
+  }
+  return;
+}
+void vmprint(pagetable_t pgtbl){
+  printf("page table %p\n", pgtbl);
+  int depth = 0;
+  r_vmprint(pgtbl, depth);
+}
