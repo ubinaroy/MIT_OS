@@ -81,6 +81,40 @@ int
 sys_pgaccess(void)
 {
   // lab pgtbl: your code here.
+
+  uint64 uaddr;
+  // 现在 uaddr 承载着需要检查的那些pages的第一页
+  argaddr(0, &uaddr);
+
+  // 页数
+  int npages;
+  argint(1, &npages);
+
+  // 这里我看大很多博主都加了这样一个页数限制，那我也加一个
+  if (npages > 64){
+    printf("too many pages\n");
+    exit(-1);
+  }
+
+  // Buffer to store the Accessed addrs
+  uint64 buffer;
+  uint64 bitmask = 0;
+  argaddr(2, &buffer);
+
+  pagetable_t pgtbl = myproc()->pagetable;
+  
+  // 根据 PTE 的 PTE_V 来判断当前虚拟地址是否 Acessed
+  for (int i = 0; i < npages; i ++){
+    pte_t *pte = walk(pgtbl, uaddr + i * PGSIZE, 0);
+    // 如果pte无效或未被访问
+    if ((!pte) || !(*pte & PTE_A))
+      continue;
+    // 将有效的 | 入bitmask里
+    bitmask = bitmask | (1 << i);
+    *pte = *pte & (~PTE_A);
+  }
+  // 将AC的存入buffer中, 我们必须通过copyout或者说是基于pa的memmove实现
+  copyout(pgtbl, buffer, (char *)(&bitmask), sizeof(uint64));
   return 0;
 }
 #endif
