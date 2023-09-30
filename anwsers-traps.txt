@@ -1,0 +1,75 @@
+1. Which registers contain arguments to functions? 
+For example, which register holds 13 in main's call to printf?
+
+根据risc-v的手册, a0-a7都是可以存放函数调用的参数的.
+
+在main函数的汇编代码中:
+
+000000000000001c <main>:
+
+void main(void) {
+  1c:	1141                	addi	sp,sp,-16
+  1e:	e406                	sd	ra,8(sp)
+  20:	e022                	sd	s0,0(sp)
+  22:	0800                	addi	s0,sp,16
+  printf("%d %d\n", f(8)+1, 13);
+  24:	4635                	li	a2,13
+  26:	45b1                	li	a1,12
+  28:	00000517          	auipc	a0,0x0
+  2c:	7b050513          	addi	a0,a0,1968 # 7d8 <malloc+0xe8>
+  30:	00000097          	auipc	ra,0x0
+  34:	608080e7          	jalr	1544(ra) # 638 <printf>
+  exit(0);
+  38:	4501                	li	a0,0
+  3a:	00000097          	auipc	ra,0x0
+  3e:	274080e7          	jalr	628(ra) # 2ae <exit>
+
+我们可以看到, 寄存器a2存放了13这个值
+-------------------------------------------------------------------
+2. Where is the call to function f in the assembly code for main? 
+Where is the call to g? (Hint: the compiler may inline functions.)
+   
+一整个函数调用链f(g(8))+1都被编译器直接优化成inline了并算出了答案=12, 放置在了a1寄存器里
+由这一行汇编源码可以看出:
+   26:	45b1                	li	a1,12
+-------------------------------------------------------------------
+3. At what address is the function printf located?
+
+由这一行汇编源码:
+    0000000000000638 <printf>
+我们可以得知printf在0x638的位置
+
+
+但我们是如何跳转到0x638的位置的呢? 来看一下这两行
+  30:	00000097          	auipc	ra,0x0
+  34:	608080e7          	jalr	1544(ra) # 638 <printf>
+
+auipcj将0右移12位后赋值给ra并加上当前的指令位置, 所有ra值为0x30.
+下一行1544(ra) = 1544 + 0x30 = 0x638 跳转到printf了就
+-------------------------------------------------------------------
+4. What value is in the register ra just after the jalr to printf in main?
+
+jalr这个指令会把下一个要执行的指令的地址压入ra, 及0x34+4 = 0x38
+-------------------------------------------------------------------
+5. Run the following code.
+
+   	unsigned int i = 0x00646c72;
+   	printf("H%x Wo%s", 57616, &i);
+
+   What is the output? Here's an ASCII table that maps bytes to characters.
+   The output depends on that fact that the RISC-V is little-endian.
+   If the RISC-V were instead big-endian what would you set i to in order to yield the same output? 
+   Would you need to change 57616 to a different value?
+
+   输出的答案是 HE110 World
+   57616的hex是0x0000E110
+   i=0x00646c72, 字节翻译是0dlr. 因为RISC-V是little-endian, 存放在连续内存里的顺序即是rld0.
+   如果RISC-V是big-endian, 57616不用变, i需要变成0x726c6400
+-------------------------------------------------------------------
+6. In the following code, what is going to be printed after 'y='? 
+(note: the answer is not a specific value.) Why does this happen?
+
+   	printf("x=%d y=%d", 3);
+
+printf的format字符串在寄存器a0, 3在寄存器a1, 所以当试图print y的时候, 留在寄存器a2的某个随机值就会被print出来
+
