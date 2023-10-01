@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "syscall.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -89,9 +90,22 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+  if(which_dev == 2){
+    // 通过 epc 来往返 user 和 kernel区，因为我们在 kernel 不能直接调用
+    // user 的函数
+    p->last_tick += 1;
+    
+    if (p->interval != 0){
+      if (p->last_tick == p->interval && !p->alarm_flag){
+        *p->alarmframe = *p->trapframe;
+        p->trapframe->epc = (uint64)p->fn;
+        p->last_tick = 0;
+        p->alarm_flag = 1;
+      }
+    }
 
+    yield();
+  }
   usertrapret();
 }
 
