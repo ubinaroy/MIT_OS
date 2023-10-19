@@ -3,3 +3,4 @@
 - [x] syscall
 - [x] page table (2021)
 - [x] traps
+- [ ] lazy & cow
