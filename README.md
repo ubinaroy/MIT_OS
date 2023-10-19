@@ -2,4 +2,4 @@
 - [x] util
 - [x] syscall
 - [x] page table (2021)
-- [ ] traps
+- [x] traps
