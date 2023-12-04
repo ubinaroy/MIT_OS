@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -180,10 +182,15 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     panic("uvmunmap: not aligned");
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
-    if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
-    if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+    if((pte = walk(pagetable, a, 0)) == 0) // 同理
+      // panic("uvmunmap: walk");
+      continue;
+     if((*pte & PTE_V) == 0){  // 加 continue， 而不是直接注释掉
+                               // 不然执行到下面的 kfree 也会出现
+                               // free 不存在页的情况，导致 panic
+      // panic("uvmunmap: not mapped");
+      continue;
+     }
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     if(do_free){
@@ -283,7 +290,8 @@ freewalk(pagetable_t pagetable)
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
     } else if(pte & PTE_V){
-      panic("freewalk: leaf");
+      // panic("freewalk: leaf");
+      continue;
     }
   }
   kfree((void*)pagetable);
@@ -315,9 +323,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      // panic("uvmcopy: pte should exist");
+      continue;
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      // panic("uvmcopy: page not present");
+      continue;
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -356,6 +366,23 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
 
+  if (dstva >= PGROUNDUP(myproc()->trapframe->sp) && dstva < myproc()->sz){
+    pte_t *pte;
+    if ((pte = walk(pagetable, dstva, 0)) == 0 || (*pte & PTE_V) == 0){
+      char *mem = kalloc();
+      if (mem == 0){
+        myproc()->killed = 1;
+        exit(-1);
+      }
+      memset(mem, 0, PGSIZE);
+      if (mappages(myproc()->pagetable, dstva, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+        kfree(mem);
+        myproc()->killed = 1;
+        exit(-1);
+      }
+    }
+  }
+
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
@@ -380,6 +407,23 @@ int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
   uint64 n, va0, pa0;
+
+  if (srcva >= PGROUNDUP(myproc()->trapframe->sp) && srcva < myproc()->sz){
+    pte_t *pte;
+    if ((pte = walk(pagetable, srcva, 0)) == 0 || (*pte & PTE_V) == 0){
+      char *mem = kalloc();
+      if (mem == 0){
+        myproc()->killed = 1;
+        exit(-1);
+      }
+      memset(mem, 0, PGSIZE);
+      if (mappages(myproc()->pagetable, srcva, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+        kfree(mem);
+        myproc()->killed = 1;
+        exit(-1);
+      }
+    }
+  }
 
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
@@ -407,6 +451,23 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
   uint64 n, va0, pa0;
   int got_null = 0;
+
+  if (srcva >= PGROUNDUP(myproc()->trapframe->sp) && srcva < myproc()->sz){
+    pte_t *pte;
+    if ((pte = walk(pagetable, srcva, 0)) == 0 || (*pte & PTE_V) == 0){
+      char *mem = kalloc();
+      if (mem == 0){
+        myproc()->killed = 1;
+        exit(-1);
+      }
+      memset(mem, 0, PGSIZE);
+      if (mappages(myproc()->pagetable, srcva, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+        kfree(mem);
+        myproc()->killed = 1;
+        exit(-1);
+      }
+    }
+  }
 
   while(got_null == 0 && max > 0){
     va0 = PGROUNDDOWN(srcva);
