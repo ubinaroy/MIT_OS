@@ -65,7 +65,19 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  }
+  // 写入
+  else if (r_scause() == 15){
+    uint64 vaddr = r_stval();
+    pagetable_t pgtbl = myproc()->pagetable;
+    if (uvmcowcopy(pgtbl, vaddr) < 0){
+      printf("usertrap: cowcopy falied.\n");
+      myproc()->killed = 1;
+      exit(-1);
+    }
+  }
+  
+  else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
