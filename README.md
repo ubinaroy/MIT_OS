@@ -3,4 +3,8 @@
 - [x] syscall
 - [x] page table (2021)
 - [x] traps
-- [ ] lazy & cow
+- [x] lazy (2020)
+- [x] cow
+- [ ] multithreading
+- [ ] network driver
+- [ ] file system
