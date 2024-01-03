@@ -5,6 +5,7 @@
 - [x] traps
 - [x] lazy (2020)
 - [x] cow
-- [ ] multithreading
-- [ ] network driver
+- [ ] thread
+- [ ] net
+- [ ] lock
 - [ ] file system
