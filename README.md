@@ -5,7 +5,7 @@
 - [x] traps
 - [x] lazy (2020)
 - [x] cow
-- [ ] thread
+- [x] thread
 - [ ] net
 - [ ] lock
 - [ ] fs
