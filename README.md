@@ -6,7 +6,7 @@
 - [x] lazy (2020)
 - [x] cow
 - [x] thread
-- [ ] net
+- [x] net
 - [ ] lock
 - [ ] fs
 - [ ] mmap
