@@ -7,6 +7,6 @@
 - [x] cow
 - [x] thread
 - [x] net
-- [ ] lock
+- [x] lock
 - [ ] fs
 - [ ] mmap
