@@ -23,32 +23,40 @@
 #include "fs.h"
 #include "buf.h"
 
+#define BUCKETSZ 13
+
 struct {
-  struct spinlock lock;
   struct buf buf[NBUF];
 
-  // Linked list of all buffers, through prev/next.
-  // Sorted by how recently the buffer was used.
-  // head.next is most recent, head.prev is least.
-  struct buf head;
+  struct BucketType {
+    struct spinlock lock;
+    struct buf head;
+  } buckets[BUCKETSZ];
 } bcache;
+
+inline int Hash(int dev, int blockno) {
+  return (dev + blockno) % BUCKETSZ;
+}
 
 void
 binit(void)
 {
-  struct buf *b;
+  for (int i = 0; i < BUCKETSZ; i ++) {
+    char names[9];
+    snprintf(names, 9, "bcache_%d", i);
+    initlock(&bcache.buckets[i].lock, names);
+  }
 
-  initlock(&bcache.lock, "bcache");
+  for (int i = 0; i < NBUF; i ++)
+    bcache.buf[i].timestamp = ticks;
 
-  // Create linked list of buffers
-  bcache.head.prev = &bcache.head;
-  bcache.head.next = &bcache.head;
-  for(b = bcache.buf; b < bcache.buf+NBUF; b++){
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
+  for (int i = 0; i < BUCKETSZ; i ++)
+    bcache.buckets[i].head.next = 0;
+
+  for (struct buf *b = bcache.buf; b < bcache.buf + NBUF; b ++) {
+    b->next = bcache.buckets[0].head.next;
     initsleeplock(&b->lock, "buffer");
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
+    bcache.buckets[0].head.next = b;
   }
 }
 
@@ -58,34 +66,91 @@ binit(void)
 static struct buf*
 bget(uint dev, uint blockno)
 {
-  struct buf *b;
+  int key = Hash(dev, blockno); // 哈希
+  struct BucketType *bucket = &bcache.buckets[key];
 
-  acquire(&bcache.lock);
+  acquire(&bucket->lock);
 
   // Is the block already cached?
-  for(b = bcache.head.next; b != &bcache.head; b = b->next){
+  for(struct buf* b = bucket->head.next; b; b = b->next){
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
-      release(&bcache.lock);
+      release(&bucket->lock);
       acquiresleep(&b->lock);
       return b;
     }
   }
 
+  release(&bucket->lock);
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
-  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
-    if(b->refcnt == 0) {
-      b->dev = dev;
-      b->blockno = blockno;
-      b->valid = 0;
-      b->refcnt = 1;
-      release(&bcache.lock);
+
+  struct buf* before_least = 0;
+  uint least_time = 0xffffffff;
+  struct BucketType* least_bucket = 0;
+
+  for (int i = 0; i < BUCKETSZ; i ++) {
+    struct BucketType* cur_bucket = &bcache.buckets[i];
+    if (!cur_bucket) continue;
+    acquire(&cur_bucket->lock);
+
+    uint flag = 0;
+
+    for (struct buf* b = &cur_bucket->head; b->next; b = b->next) {
+      // 我们查找的是 lru 的前一个节点，因为我们需要将其删除
+      if (b->next->refcnt == 0 && b->next->timestamp < least_time) {
+        before_least = b;
+        least_time = before_least->timestamp;
+        flag = 1;
+      }
+    }
+
+    if(!flag) {
+      // 未找到更优，直接释放着找下一个 bucket
+      release(&cur_bucket->lock);
+    }
+    else {
+      // 这里需要一直获取 lru 所在的那个 bucket 的锁，在循环外面释放
+      // 因为如果是并行的话，可能存在同时多个线程都执行 bget，或许到同一个 dev 和 blockno 对应的 buf
+      // 直接释放最优的锁会破坏整个 "删除-添加" 的原子性
+      if(least_bucket != 0) release(&least_bucket->lock);
+      least_bucket = cur_bucket;
+    }
+  }
+
+  if (!before_least)
+    panic("bget: no buffers");
+
+  // 在最优 bucket 内删除该 lru buffer
+  struct buf* lru = before_least->next;
+  before_least->next = lru->next;
+
+  release(&least_bucket->lock);
+
+  acquire(&bucket->lock);
+
+  // double check，是否存在 lru 被重复冲刷到本 bucket 里了，是的话直接返回
+  // double check 可以将在某不知名线程冲刷之后，重新有了 cache，就直接读取
+  for (struct buf* b = bucket->head.next; b; b = b->next) {
+    if (b->dev == dev && b->blockno == blockno) {
+      b->refcnt ++;
+      release(&bucket->lock);
       acquiresleep(&b->lock);
       return b;
     }
   }
-  panic("bget: no buffers");
+
+  lru->next = bucket->head.next;
+  bucket->head.next = lru;
+
+  lru->dev = dev;
+  lru->blockno = blockno;
+  lru->refcnt = 1;
+  lru->valid = 0;
+  release(&bucket->lock);
+
+  acquiresleep(&lru->lock);
+  return lru;
 }
 
 // Return a locked buf with the contents of the indicated block.
@@ -120,34 +185,31 @@ brelse(struct buf *b)
     panic("brelse");
 
   releasesleep(&b->lock);
+  
+  uint key = Hash(b->dev, b->blockno);
 
-  acquire(&bcache.lock);
+  acquire(&bcache.buckets[key].lock);
   b->refcnt--;
   if (b->refcnt == 0) {
-    // no one is waiting for it.
-    b->next->prev = b->prev;
-    b->prev->next = b->next;
-    b->next = bcache.head.next;
-    b->prev = &bcache.head;
-    bcache.head.next->prev = b;
-    bcache.head.next = b;
+    b->timestamp = ticks;
   }
   
-  release(&bcache.lock);
+  release(&bcache.buckets[key].lock);
 }
 
 void
 bpin(struct buf *b) {
-  acquire(&bcache.lock);
+  uint key = Hash(b->dev, b->blockno);
+  acquire(&bcache.buckets[key].lock);
   b->refcnt++;
-  release(&bcache.lock);
+  release(&bcache.buckets[key].lock);
 }
 
 void
 bunpin(struct buf *b) {
-  acquire(&bcache.lock);
+  uint key = Hash(b->dev, b->blockno);
+  acquire(&bcache.buckets[key].lock);
   b->refcnt--;
-  release(&bcache.lock);
-}
+  release(&bcache.buckets[key].lock);}
 
 
