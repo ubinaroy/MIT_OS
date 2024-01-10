@@ -8,5 +8,5 @@
 - [x] thread
 - [x] net
 - [x] lock
-- [ ] fs
+- [x] fs
 - [ ] mmap
